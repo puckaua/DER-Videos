@@ -20,18 +20,19 @@ export default async function handler(req, res) {
   }
 
   try {
-    const redirectUri =
-      process.env.NODE_ENV === "production"
-        ? `https://${req.headers.host}/api/auth/callback`
-        : `http://localhost:3000/api/auth/callback`;
+    // Usa a mesma lógica do login.js — deve ser idêntica à URI registrada no Azure
+    const baseUrl =
+      process.env.APP_BASE_URL ||
+      (process.env.NODE_ENV === "production"
+        ? `https://${req.headers.host}`
+        : `http://localhost:3000`);
+
+    const redirectUri = `${baseUrl}/api/auth/callback`;
+
+    console.log("[callback] redirectUri:", redirectUri);
 
     const tokenData = await exchangeCodeForToken(code, redirectUri);
 
-    // Calcula quando o token expira
-    const expiresAt = Date.now() + tokenData.expires_in * 1000;
-
-    // Salva token nos cookies HttpOnly (seguro, não acessível via JS no browser)
-    // Em produção, considere usar uma solução de sessão como iron-session ou next-auth
     const cookieOptions = [
       `access_token=${tokenData.access_token}`,
       `HttpOnly`,
@@ -49,7 +50,7 @@ export default async function handler(req, res) {
       `Path=/`,
       `SameSite=Lax`,
       process.env.NODE_ENV === "production" ? `Secure` : "",
-      `Max-Age=${60 * 60 * 24 * 30}`, // 30 dias
+      `Max-Age=${60 * 60 * 24 * 30}`,
     ]
       .filter(Boolean)
       .join("; ");
