@@ -1,107 +1,75 @@
 /**
  * pages/api/shared.js
  *
- * Lista os itens compartilhados com o usuário no OneDrive.
- * Chama: GET https://graph.microsoft.com/v1.0/me/drive/sharedWithMe
- *
- * Este endpoint usa o access token do usuário (fluxo delegado),
- * não o token de aplicativo (Client Credentials).
- * O token vem do cookie HttpOnly definido no login.
+ * Retorna o conteúdo da pasta raiz "VÍDEOS RTA" diretamente.
+ * driveId e itemId são fixos — identificados via diagnóstico.
  */
 
-const GRAPH_API = "https://graph.microsoft.com/v1.0";
+const GRAPH_API    = "https://graph.microsoft.com/v1.0";
+const ROOT_DRIVE_ID = "b!whoE7FWYLUaYEImzCfTbC3Jdb0ZlNedDrl9AUW8vEtvo5yHX02WrQKkIpzT9z8IZ";
+const ROOT_ITEM_ID  = "01QSAFR6WCGH5GRB2XPBCIEBB3WWDRUCSH";
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ error: "Método não permitido" });
-  }
+  if (req.method !== "GET") return res.status(405).json({ error: "Método não permitido" });
 
-  const accessToken = getTokenFromCookies(req);
-  if (!accessToken) {
-    return res.status(401).json({ error: "Não autenticado. Faça login primeiro." });
-  }
+  const token = getCookie(req, "access_token");
+  if (!token) return res.status(401).json({ error: "Não autenticado." });
 
   try {
-    const response = await fetch(`${GRAPH_API}/me/drive/sharedWithMe`, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
+    const url =
+      `${GRAPH_API}/drives/${ROOT_DRIVE_ID}/items/${ROOT_ITEM_ID}/children` +
+      `?$select=id,name,folder,video,file,size,lastModifiedDateTime,@microsoft.graph.downloadUrl` +
+      `&$top=200`;
+
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
     });
 
     if (!response.ok) {
       const error = await response.json();
-      console.error("Erro da Graph API:", error);
-
-      if (response.status === 401) {
-        return res.status(401).json({ error: "Token expirado. Faça login novamente." });
-      }
-
-      return res.status(response.status).json({
-        error: error.error?.message || "Erro ao consultar a Graph API",
-      });
+      if (response.status === 401) return res.status(401).json({ error: "Token expirado." });
+      return res.status(response.status).json({ error: error.error?.message || "Erro na Graph API" });
     }
 
     const data = await response.json();
-
-    // Normaliza os itens para o formato que o frontend espera
-    const items = (data.value || []).map((item) => normalizeSharedItem(item));
+    const items = (data.value || []).map(i => normalizeItem(i, ROOT_DRIVE_ID));
+    items.sort((a, b) => {
+      if (a.type === "folder" && b.type !== "folder") return -1;
+      if (a.type !== "folder" && b.type === "folder") return 1;
+      return a.name.localeCompare(b.name, "pt-BR");
+    });
 
     res.status(200).json({ items });
   } catch (err) {
-    console.error("Erro interno em /api/shared:", err);
+    console.error("Erro em /api/shared:", err);
     res.status(500).json({ error: "Erro interno do servidor" });
   }
 }
 
-/**
- * Normaliza um item retornado pelo endpoint sharedWithMe.
- * Itens compartilhados têm uma estrutura especial com `remoteItem`.
- */
-function normalizeSharedItem(item) {
-  const remote = item.remoteItem || {};
-  const isFolder = !!(remote.folder || item.folder);
-  const isVideo = isVideoFile(item.name || remote.name || "");
-
+function normalizeItem(item, driveId) {
+  const isFolder = !!item.folder;
+  const isVideo  = !!item.video || isVideoFile(item.name || "");
   return {
-    id: remote.id || item.id,
-    name: item.name || remote.name || "Sem nome",
+    id: item.id,
+    name: item.name || "Sem nome",
     type: isFolder ? "folder" : isVideo ? "video" : "file",
-    // driveId é necessário para navegar dentro de pastas compartilhadas
-    driveId:
-      remote.parentReference?.driveId ||
-      item.remoteItem?.parentReference?.driveId ||
-      null,
-    // Para pastas remotas, usamos o ID remoto para navegar
-    remoteItemId: remote.id || null,
-    size: remote.size || item.size || 0,
-    lastModified:
-      remote.lastModifiedDateTime || item.lastModifiedDateTime || null,
-    // URL de download direto (disponível para arquivos, não pastas)
-    downloadUrl:
-      item["@microsoft.graph.downloadUrl"] ||
-      remote["@microsoft.graph.downloadUrl"] ||
-      null,
-    thumbnailUrl: getThumbnailUrl(remote),
+    driveId,
+    size: item.size || 0,
+    lastModified: item.lastModifiedDateTime || null,
+    downloadUrl: item["@microsoft.graph.downloadUrl"] || null,
+    childCount: item.folder?.childCount ?? null,
   };
 }
 
 function isVideoFile(name) {
-  const videoExtensions = [".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".wmv", ".flv"];
   const ext = name.toLowerCase().slice(name.lastIndexOf("."));
-  return videoExtensions.includes(ext);
+  return [".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".wmv", ".flv"].includes(ext);
 }
 
-function getThumbnailUrl(item) {
-  return item.thumbnails?.[0]?.large?.url || null;
-}
-
-function getTokenFromCookies(req) {
-  const cookieStr = req.headers.cookie || "";
-  const cookies = cookieStr.split(";").reduce((acc, pair) => {
-    const [key, ...val] = pair.trim().split("=");
-    if (key) acc[key.trim()] = val.join("=").trim();
+function getCookie(req, name) {
+  return (req.headers.cookie || "").split(";").reduce((acc, pair) => {
+    const [k, ...v] = pair.trim().split("=");
+    if (k?.trim() === name) acc = v.join("=").trim();
     return acc;
-  }, {});
-  return cookies.access_token || null;
+  }, null);
 }
