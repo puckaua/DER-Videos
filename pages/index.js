@@ -39,12 +39,9 @@ function MicrosoftLogo() {
 
 // ─── Componente: VideoPlayer Modal ───────────────────────────────────────────
 
-function VideoModal({ video, onClose }) {
-  const [videoUrl, setVideoUrl] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const videoRef = useRef(null);
+// ─── Componente: VideoPlayer Modal ───────────────────────────────────────────
 
+function VideoModal({ video, onClose }) {
   // Fecha ao pressionar Escape
   useEffect(() => {
     const handler = (e) => { if (e.key === "Escape") onClose(); };
@@ -52,40 +49,11 @@ function VideoModal({ video, onClose }) {
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  // Busca URL fresca do vídeo
-  useEffect(() => {
-    if (!video) return;
-
-    async function fetchVideoUrl() {
-      setLoading(true);
-      setError(null);
-      try {
-        // Se já temos a downloadUrl e ela é recente, usa diretamente
-        if (video.downloadUrl) {
-          setVideoUrl(video.downloadUrl);
-          setLoading(false);
-          return;
-        }
-
-        // Caso contrário, busca uma URL fresca via API
-        const res = await fetch(
-          `/api/video-url?driveId=${encodeURIComponent(video.driveId)}&itemId=${encodeURIComponent(video.id)}`
-        );
-        const data = await res.json();
-
-        if (!res.ok) throw new Error(data.error || "Erro ao carregar vídeo");
-        setVideoUrl(data.downloadUrl);
-      } catch (err) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchVideoUrl();
-  }, [video]);
-
   if (!video) return null;
+
+  // Monta a rota da sua API. O próprio player de vídeo do navegador 
+  // vai acessar esse link, receber o redirecionamento 302 e rodar o vídeo.
+  const videoSrc = `/api/video-url?driveId=${encodeURIComponent(video.driveId)}&itemId=${encodeURIComponent(video.id)}`;
 
   return (
     <div
@@ -108,35 +76,13 @@ function VideoModal({ video, onClose }) {
         </div>
 
         <div className="video-wrapper">
-          {loading && (
-            <div className="video-loading">
-              <div className="spinner" />
-              <span>Carregando vídeo…</span>
-            </div>
-          )}
-
-          {error && (
-            <div className="video-loading">
-              <span style={{ fontSize: 32 }}>⚠️</span>
-              <span style={{ color: "#FCA5A5" }}>{error}</span>
-              <button
-                className="btn btn-ghost"
-                onClick={() => { setError(null); setLoading(true); }}
-                style={{ marginTop: 8 }}
-              >
-                Tentar novamente
-              </button>
-            </div>
-          )}
-
-          {videoUrl && !loading && !error && (
-            <video 
-              src={`/api/video-url?driveId=${driveId}&itemId=${itemId}`} 
-              controls 
-              width="100%" 
-              preload="metadata"
-            />
-          )}
+          <video 
+            src={videoSrc} 
+            controls 
+            autoPlay
+            width="100%" 
+            preload="metadata"
+          />
         </div>
       </div>
     </div>
