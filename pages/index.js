@@ -130,16 +130,12 @@ function VideoModal({ video, onClose }) {
           )}
 
           {videoUrl && !loading && !error && (
-            <video
-              ref={videoRef}
-              className="video-player"
-              controls
-              autoPlay
-              src={videoUrl}
-              onError={() => setError("Erro ao reproduzir o vídeo. A URL pode ter expirado.")}
-            >
-              Seu navegador não suporta a reprodução de vídeo.
-            </video>
+            <video 
+              src={`/api/video-url?driveId=${driveId}&itemId=${itemId}`} 
+              controls 
+              width="100%" 
+              preload="metadata"
+            />
           )}
         </div>
       </div>

@@ -1,13 +1,8 @@
 /**
  * pages/api/video-url.js
  *
- * Obtém uma URL de download fresca para um arquivo de vídeo.
- * As @microsoft.graph.downloadUrl expiram, então esta rota
- * busca uma URL atualizada sob demanda.
- *
- * Query params:
- *   - driveId: ID do drive
- *   - itemId:  ID do arquivo de vídeo
+ * Obtém uma URL de download fresca para o arquivo de vídeo
+ * e redireciona o navegador diretamente para ela.
  */
 
 const GRAPH_API = "https://graph.microsoft.com/v1.0";
@@ -29,7 +24,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const url = `${GRAPH_API}/drives/${driveId}/items/${itemId}?$select=id,name,@microsoft.graph.downloadUrl,video`;
+    // CORREÇÃO DA CAUSA 2: Removemos o ?$select para evitar bugs com o caractere '@'.
+    // Buscaremos o item completo, que sempre trará a URL de download limpa.
+    const url = `${GRAPH_API}/drives/${driveId}/items/${itemId}`;
 
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -38,7 +35,7 @@ export default async function handler(req, res) {
     if (!response.ok) {
       const error = await response.json();
       return res.status(response.status).json({
-        error: error.error?.message || "Erro ao buscar URL do vídeo",
+        error: error.error?.message || "Erro ao buscar dados do vídeo",
       });
     }
 
@@ -49,11 +46,11 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: "URL de download não disponível para este arquivo." });
     }
 
-    res.status(200).json({
-      downloadUrl,
-      name: data.name,
-      video: data.video || null,
-    });
+    // CORREÇÃO DAS CAUSAS 1 e 3: 
+    // Em vez de retornar JSON, redirecionamos o navegador com status 302 
+    // direto para o arquivo de vídeo na CDN da Microsoft.
+    return res.redirect(302, downloadUrl);
+
   } catch (err) {
     console.error("Erro em /api/video-url:", err);
     res.status(500).json({ error: "Erro interno do servidor" });
