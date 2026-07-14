@@ -2,7 +2,7 @@
  * pages/api/shared.js
  *
  * Retorna o conteúdo da pasta raiz "VÍDEOS RTA" diretamente.
- * driveId e itemId são fixos — identificados via diagnóstico.
+ * git
  */
 
 const GRAPH_API    = "https://graph.microsoft.com/v1.0";
